@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Morelli's Invoice Tracker</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy: #1a2e4a;
+    --gold: #c9a84c;
+    --gold-light: #f5ecd4;
+    --gold-dark: #9b7a2e;
+    --bg: #f7f5f0;
+    --surface: #ffffff;
+    --border: #e0d9cc;
+    --text: #1a1a1a;
+    --muted: #6b6355;
+    --danger: #b03030;
+    --danger-bg: #fdf0f0;
+    --success: #1e6b3e;
+    --success-bg: #edf7f1;
+    --radius: 8px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0 0 3rem;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--navy);
+    color: #fff;
+    padding: 1.1rem 1.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    border-bottom: 3px solid var(--gold);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+  header h1 { font-size: 18px; font-weight: 600; }
+  .sync-status {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.6);
+  }
+  .sync-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #888;
+    transition: background 0.3s;
+  }
+  .sync-dot.live { background: #4caf7d; }
+  .sync-dot.error { background: #e05555; }
+
+  /* ── Setup screen ── */
+  #setup-screen {
+    max-width: 560px;
+    margin: 3rem auto;
+    padding: 0 1.25rem;
+  }
+  .setup-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 2rem;
+  }
+  .setup-card h2 { font-size: 18px; font-weight: 600; color: var(--navy); margin-bottom: 0.5rem; }
+  .setup-card p { font-size: 14px; color: var(--muted); line-height: 1.6; margin-bottom: 1.25rem; }
+  .setup-steps { background: var(--bg); border-radius: var(--radius); padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
+  .setup-steps ol { padding-left: 1.25rem; }
+  .setup-steps li { font-size: 13px; color: var(--text); line-height: 1.7; }
+  .setup-steps code { font-family: monospace; background: #e8e4dc; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .config-area {
+    font-family: monospace;
+    font-size: 13px;
+    width: 100%;
+    height: 220px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.75rem;
+    background: #1e1e2e;
+    color: #cdd6f4;
+    resize: vertical;
+    margin-bottom: 0.75rem;
+  }
+  .config-area:focus { outline: none; border-color: var(--gold); }
+  .setup-err { font-size: 13px; color: var(--danger); margin-bottom: 0.75rem; display: none; }
+
+  /* ── Main app (hidden until connected) ── */
+  #app { display: none; }
+  .container { max-width: 960px; margin: 0 auto; padding: 1.5rem 1.25rem; }
+
+  /* ── Totals banner ── */
+  .totals-banner {
+    background: var(--navy);
+    border-radius: var(--radius);
+    padding: 1rem 1.5rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .tb-item .tb-label { font-size: 11px; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+  .tb-item .tb-val { font-size: 18px; font-weight: 600; color: var(--gold); }
+  .tb-item.grand .tb-val { color: #fff; font-size: 22px; }
+
+  /* ── Form ── */
+  .form-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .form-card h2 { font-size: 13px; font-weight: 600; color: var(--navy); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 1rem; }
+  .top-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 1rem; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 12px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+  .field input { font-size: 15px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text); transition: border-color 0.15s; }
+  .field input:focus { outline: none; border-color: var(--navy); }
+  .cats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1rem; }
+  .cat-field { display: flex; flex-direction: column; gap: 4px; }
+  .cat-field label { font-size: 12px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+  .money-wrap { position: relative; }
+  .money-wrap input { width: 100%; padding: 8px 10px 8px 22px; font-size: 15px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text); transition: border-color 0.15s; }
+  .money-wrap input:focus { outline: none; border-color: var(--navy); }
+  .money-wrap::before { content: '$'; position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 13px; pointer-events: none; }
+
+  .form-totals { background: var(--gold-light); border: 1px solid #e0c98a; border-radius: var(--radius); padding: 0.75rem 1rem; margin-bottom: 1rem; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+  .ft-item .ft-label { font-size: 11px; color: var(--gold-dark); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  .ft-item .ft-val { font-size: 18px; font-weight: 600; color: var(--navy); }
+
+  .form-actions { display: flex; gap: 8px; align-items: center; }
+  .saving-indicator { font-size: 13px; color: var(--muted); display: none; }
+
+  button {
+    padding: 9px 18px; border-radius: var(--radius); font-size: 14px;
+    font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s;
+  }
+  .btn-primary { background: var(--navy); color: #fff; border-color: var(--navy); }
+  .btn-primary:hover { background: #243d5e; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary { background: transparent; color: var(--muted); border-color: var(--border); }
+  .btn-secondary:hover { background: var(--bg); }
+  .btn-danger { background: transparent; color: var(--danger); border-color: var(--border); }
+  .btn-danger:hover { background: var(--danger-bg); border-color: var(--danger); }
+
+  .err { font-size: 12px; color: var(--danger); margin-top: 6px; display: none; }
+
+  /* ── Table ── */
+  .table-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+  .table-header { padding: 0.9rem 1.25rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); gap: 8px; flex-wrap: wrap; }
+  .table-header h2 { font-size: 13px; font-weight: 600; color: var(--navy); text-transform: uppercase; letter-spacing: 0.06em; }
+  .table-controls { display: flex; gap: 8px; align-items: center; }
+  .entry-count { font-size: 12px; color: var(--muted); background: var(--bg); padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); }
+  .search-box { font-size: 13px; padding: 5px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text); width: 160px; }
+  .search-box:focus { outline: none; border-color: var(--navy); }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  thead th { background: var(--navy); color: rgba(255,255,255,0.75); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 9px 12px; text-align: right; white-space: nowrap; cursor: pointer; user-select: none; }
+  thead th:first-child, thead th:nth-child(2) { text-align: left; }
+  thead th:hover { color: var(--gold); }
+  thead th.sorted { color: var(--gold); }
+  .sort-arrow { margin-left: 4px; opacity: 0.6; }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--gold-light); }
+  tbody td { padding: 9px 12px; text-align: right; color: var(--text); white-space: nowrap; }
+  tbody td:first-child { text-align: left; font-weight: 600; color: var(--navy); font-family: monospace; font-size: 13px; }
+  tbody td:nth-child(2) { text-align: left; color: var(--muted); font-size: 13px; }
+  td.receipt-total { font-weight: 600; color: var(--navy); }
+  .del-btn { background: none; border: none; color: #ccc; cursor: pointer; padding: 3px 7px; border-radius: 4px; font-size: 16px; line-height: 1; }
+  .del-btn:hover { color: var(--danger); background: var(--danger-bg); }
+
+  .empty-state { padding: 3rem 1.25rem; text-align: center; color: var(--muted); font-size: 14px; line-height: 1.8; }
+
+  /* ── Loading overlay ── */
+  #loading {
+    position: fixed; inset: 0;
+    background: rgba(26,46,74,0.92);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 200; color: #fff; gap: 1rem;
+  }
+  #loading p { font-size: 15px; color: rgba(255,255,255,0.7); }
+  .spinner { width: 36px; height: 36px; border: 3px solid rgba(201,168,76,0.3); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Toast ── */
+  .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: var(--navy); color: #fff; padding: 10px 18px; border-radius: var(--radius); font-size: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); opacity: 0; transform: translateY(8px); transition: all 0.2s; pointer-events: none; z-index: 999; border-left: 3px solid var(--gold); }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  @media (max-width: 600px) {
+    .top-fields, .cats { grid-template-columns: 1fr; }
+    header { padding: 0.9rem 1rem; }
+    header h1 { font-size: 15px; }
+    .form-card, .totals-banner { padding: 1rem; }
+    .search-box { width: 120px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div id="loading">
+  <div class="spinner"></div>
+  <p>Connecting to database…</p>
+</div>
+
+<!-- Setup screen (shown if no config saved) -->
+<div id="setup-screen" style="display:none;">
+  <div class="setup-card">
+    <h2>Connect to Firebase</h2>
+    <p>This tracker stores all invoices in Firebase Firestore so your data is available from any browser or device. Paste your Firebase project config below to get started.</p>
+    <div class="setup-steps">
+      <ol>
+        <li>Go to <strong>console.firebase.google.com</strong> and open your project (or create a new one).</li>
+        <li>Click the gear icon → <strong>Project settings</strong></li>
+        <li>Under <strong>Your apps</strong>, add a Web app if you haven't (or use existing).</li>
+        <li>Copy the <code>firebaseConfig</code> object and paste it below.</li>
+        <li>In Firestore → <strong>Rules</strong>, set read/write to <code>true</code> (for private use) or add auth rules.</li>
+      </ol>
+    </div>
+    <textarea class="config-area" id="config-input" placeholder='{
+  "apiKey": "AIza...",
+  "authDomain": "your-app.firebaseapp.com",
+  "projectId": "your-project-id",
+  "storageBucket": "your-app.appspot.com",
+  "messagingSenderId": "123456789",
+  "appId": "1:123...:web:abc..."
+}'></textarea>
+    <p class="setup-err" id="setup-err"></p>
+    <button class="btn-primary" onclick="connectFirebase()">Connect &amp; save</button>
+    <p style="font-size:12px; color:var(--muted); margin-top:0.75rem;">Config is saved in this browser's localStorage so you only need to enter it once per device.</p>
+  </div>
+</div>
+
+<!-- Main app -->
+<div id="app">
+  <header>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(201,168,76,0.9)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h6M7 16h4"/></svg>
+    <h1>Morelli's invoice tracker</h1>
+    <div class="sync-status">
+      <div class="sync-dot" id="sync-dot"></div>
+      <span id="sync-label">Connecting…</span>
+    </div>
+  </header>
+
+  <div class="container">
+
+    <!-- Totals banner -->
+    <div class="totals-banner">
+      <div class="tb-item"><div class="tb-label">Food</div><div class="tb-val" id="t-food">$0.00</div></div>
+      <div class="tb-item"><div class="tb-label">Clubhouse</div><div class="tb-val" id="t-club">$0.00</div></div>
+      <div class="tb-item"><div class="tb-label">Non-alc &amp; snacks</div><div class="tb-val" id="t-na">$0.00</div></div>
+      <div class="tb-item"><div class="tb-label">Beer</div><div class="tb-val" id="t-beer">$0.00</div></div>
+      <div class="tb-item"><div class="tb-label">Tax</div><div class="tb-val" id="t-tax">$0.00</div></div>
+      <div class="tb-item grand"><div class="tb-label">Grand total</div><div class="tb-val" id="t-grand">$0.00</div></div>
+    </div>
+
+    <!-- Entry form -->
+    <div class="form-card">
+      <h2>New invoice</h2>
+      <div class="top-fields">
+        <div class="field">
+          <label for="inv-num">Invoice #</label>
+          <input type="text" id="inv-num" placeholder="e.g. 1027623" />
+        </div>
+        <div class="field">
+          <label for="inv-date">Invoice date</label>
+          <input type="date" id="inv-date" />
+        </div>
+      </div>
+      <div class="cats">
+        <div class="cat-field"><label>Food total</label><div class="money-wrap"><input type="number" id="food" min="0" step="0.01" placeholder="0.00" oninput="liveCalc()" /></div></div>
+        <div class="cat-field"><label>Clubhouse supplies</label><div class="money-wrap"><input type="number" id="club" min="0" step="0.01" placeholder="0.00" oninput="liveCalc()" /></div></div>
+        <div class="cat-field"><label>Non-alcohol &amp; snacks</label><div class="money-wrap"><input type="number" id="na" min="0" step="0.01" placeholder="0.00" oninput="liveCalc()" /></div></div>
+        <div class="cat-field"><label>Beer</label><div class="money-wrap"><input type="number" id="beer" min="0" step="0.01" placeholder="0.00" oninput="liveCalc()" /></div></div>
+        <div class="cat-field"><label>Tax</label><div class="money-wrap"><input type="number" id="tax" min="0" step="0.01" placeholder="0.00" oninput="liveCalc()" /></div></div>
+      </div>
+      <div class="form-totals">
+        <div class="ft-item"><div class="ft-label">Subtotal</div><div class="ft-val" id="f-sub">$0.00</div></div>
+        <div class="ft-item"><div class="ft-label">Tax</div><div class="ft-val" id="f-tax">$0.00</div></div>
+        <div class="ft-item"><div class="ft-label">Receipt total</div><div class="ft-val" id="f-grand">$0.00</div></div>
+      </div>
+      <p class="err" id="form-err">Please enter an invoice number before saving.</p>
+      <div class="form-actions">
+        <button class="btn-primary" id="save-btn" onclick="saveInvoice()">Save invoice</button>
+        <button class="btn-secondary" onclick="clearForm()">Clear</button>
+        <span class="saving-indicator" id="saving-indicator">Saving…</span>
+      </div>
+    </div>
+
+    <!-- Invoice table -->
+    <div class="table-card">
+      <div class="table-header">
+        <h2>Invoices</h2>
+        <div class="table-controls">
+          <input type="text" class="search-box" id="search-box" placeholder="Search invoice #…" oninput="renderTable()" />
+          <span class="entry-count" id="entry-count">0 entries</span>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th onclick="sortBy('inv')">Invoice # <span class="sort-arrow" id="sort-inv"></span></th>
+              <th onclick="sortBy('date')">Date <span class="sort-arrow" id="sort-date"></span></th>
+              <th onclick="sortBy('food')">Food <span class="sort-arrow" id="sort-food"></span></th>
+              <th onclick="sortBy('club')">Clubhouse <span class="sort-arrow" id="sort-club"></span></th>
+              <th onclick="sortBy('na')">Non-alc &amp; snacks <span class="sort-arrow" id="sort-na"></span></th>
+              <th onclick="sortBy('beer')">Beer <span class="sort-arrow" id="sort-beer"></span></th>
+              <th onclick="sortBy('tax')">Tax <span class="sort-arrow" id="sort-tax"></span></th>
+              <th onclick="sortBy('grand')">Receipt total <span class="sort-arrow" id="sort-grand"></span></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="invoice-body">
+            <tr><td colspan="9" class="empty-state">Loading invoices…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <p style="font-size:11px; color:var(--muted); text-align:right; margin-top:0.75rem; cursor:pointer;" onclick="resetConfig()">⚙ Change Firebase config</p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+  import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, query, orderBy } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+  const COLLECTION = 'morellis_invoices';
+  let db, invoices = [], sortField = 'date', sortDir = -1;
+
+  // ── Helpers ──────────────────────────────────────────────
+  function fmt(n) { return '$' + (parseFloat(n) || 0).toFixed(2); }
+  function gv(id) { return parseFloat(document.getElementById(id).value) || 0; }
+
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 2400);
+  }
+
+  function setSyncStatus(state) {
+    const dot = document.getElementById('sync-dot');
+    const label = document.getElementById('sync-label');
+    if (state === 'live') { dot.className = 'sync-dot live'; label.textContent = 'Live'; }
+    else if (state === 'error') { dot.className = 'sync-dot error'; label.textContent = 'Offline'; }
+    else { dot.className = 'sync-dot'; label.textContent = 'Connecting…'; }
+  }
+
+  // ── Live calc ────────────────────────────────────────────
+  window.liveCalc = function() {
+    const sub = gv('food') + gv('club') + gv('na') + gv('beer');
+    const tax = gv('tax');
+    document.getElementById('f-sub').textContent = fmt(sub);
+    document.getElementById('f-tax').textContent = fmt(tax);
+    document.getElementById('f-grand').textContent = fmt(sub + tax);
+  };
+
+  // ── Save invoice ─────────────────────────────────────────
+  window.saveInvoice = async function() {
+    const num = document.getElementById('inv-num').value.trim();
+    const errEl = document.getElementById('form-err');
+    if (!num) { errEl.style.display = 'block'; return; }
+    errEl.style.display = 'none';
+
+    const record = {
+      inv: num,
+      date: document.getElementById('inv-date').value || '',
+      food: gv('food'), club: gv('club'), na: gv('na'), beer: gv('beer'), tax: gv('tax'),
+      updatedAt: Date.now()
+    };
+
+    const btn = document.getElementById('save-btn');
+    const ind = document.getElementById('saving-indicator');
+    btn.disabled = true;
+    ind.style.display = 'inline';
+
+    try {
+      await setDoc(doc(db, COLLECTION, num), record);
+      toast('Invoice ' + num + ' saved.');
+      clearForm();
+    } catch(e) {
+      toast('Error saving: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      ind.style.display = 'none';
+    }
+  };
+
+  // ── Delete ───────────────────────────────────────────────
+  window.deleteInvoice = async function(inv) {
+    if (!confirm('Delete invoice ' + inv + '? This cannot be undone.')) return;
+    try {
+      await deleteDoc(doc(db, COLLECTION, inv));
+      toast('Deleted invoice ' + inv + '.');
+    } catch(e) {
+      toast('Error deleting: ' + e.message);
+    }
+  };
+
+  // ── Clear form ───────────────────────────────────────────
+  window.clearForm = function() {
+    ['inv-num','inv-date','food','club','na','beer','tax'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('form-err').style.display = 'none';
+    liveCalc();
+  };
+
+  // ── Sort ─────────────────────────────────────────────────
+  window.sortBy = function(field) {
+    if (sortField === field) { sortDir *= -1; }
+    else { sortField = field; sortDir = -1; }
+    renderTable();
+  };
+
+  // ── Render table ─────────────────────────────────────────
+  window.renderTable = function() {
+    const search = (document.getElementById('search-box')?.value || '').toLowerCase();
+    let data = invoices.filter(r => !search || r.inv.toLowerCase().includes(search));
+
+    ['food','club','na','beer','tax','grand'].forEach(k => {
+      const el = document.getElementById('sort-' + k);
+      if (el) el.textContent = '';
+    });
+    ['inv','date'].forEach(k => {
+      const el = document.getElementById('sort-' + k);
+      if (el) el.textContent = '';
+    });
+    const sortEl = document.getElementById('sort-' + sortField);
+    if (sortEl) sortEl.textContent = sortDir === 1 ? '↑' : '↓';
+
+    data.sort((a, b) => {
+      let av = sortField === 'grand' ? (a.food+a.club+a.na+a.beer+a.tax) : (a[sortField] ?? '');
+      let bv = sortField === 'grand' ? (b.food+b.club+b.na+b.beer+b.tax) : (b[sortField] ?? '');
+      if (typeof av === 'string') return av.localeCompare(bv) * sortDir;
+      return (av - bv) * sortDir;
+    });
+
+    // Totals
+    let tFood=0, tClub=0, tNa=0, tBeer=0, tTax=0;
+    invoices.forEach(r => { tFood+=r.food; tClub+=r.club; tNa+=r.na; tBeer+=r.beer; tTax+=r.tax; });
+    const tGrand = tFood + tClub + tNa + tBeer + tTax;
+    document.getElementById('t-food').textContent = fmt(tFood);
+    document.getElementById('t-club').textContent = fmt(tClub);
+    document.getElementById('t-na').textContent = fmt(tNa);
+    document.getElementById('t-beer').textContent = fmt(tBeer);
+    document.getElementById('t-tax').textContent = fmt(tTax);
+    document.getElementById('t-grand').textContent = fmt(tGrand);
+    document.getElementById('entry-count').textContent = invoices.length + (invoices.length === 1 ? ' entry' : ' entries');
+
+    const tbody = document.getElementById('invoice-body');
+    if (data.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="9" class="empty-state">${search ? 'No invoices match "' + search + '".' : 'No invoices yet. Add one above.'}</td></tr>`;
+      return;
+    }
+
+    function fmtDate(d) {
+      if (!d) return '—';
+      const [y,m,day] = d.split('-');
+      return m + '/' + day + '/' + y;
+    }
+
+    tbody.innerHTML = data.map(r => {
+      const grand = r.food + r.club + r.na + r.beer + r.tax;
+      return `<tr>
+        <td>${r.inv}</td>
+        <td>${fmtDate(r.date)}</td>
+        <td>${fmt(r.food)}</td>
+        <td>${fmt(r.club)}</td>
+        <td>${fmt(r.na)}</td>
+        <td>${fmt(r.beer)}</td>
+        <td>${fmt(r.tax)}</td>
+        <td class="receipt-total">${fmt(grand)}</td>
+        <td><button class="del-btn" onclick="deleteInvoice('${r.inv}')" title="Delete">×</button></td>
+      </tr>`;
+    }).join('');
+  };
+
+  // ── Firebase connect ─────────────────────────────────────
+  function startFirebase(config) {
+    try {
+      const app = initializeApp(config);
+      db = getFirestore(app);
+
+      const q = query(collection(db, COLLECTION), orderBy('updatedAt', 'desc'));
+      onSnapshot(q,
+        snap => {
+          invoices = snap.docs.map(d => d.data());
+          setSyncStatus('live');
+          renderTable();
+        },
+        err => {
+          console.error(err);
+          setSyncStatus('error');
+          toast('Firestore error: ' + err.message);
+        }
+      );
+
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+    } catch(e) {
+      return e.message;
+    }
+    return null;
+  }
+
+  // ── Config connect button ────────────────────────────────
+  window.connectFirebase = function() {
+    const raw = document.getElementById('config-input').value.trim();
+    const errEl = document.getElementById('setup-err');
+    errEl.style.display = 'none';
+    let config;
+    try {
+      config = JSON.parse(raw);
+    } catch(e) {
+      errEl.textContent = 'Invalid JSON — check your config format.';
+      errEl.style.display = 'block';
+      return;
+    }
+    if (!config.projectId) {
+      errEl.textContent = 'Config missing projectId — copy the full firebaseConfig object.';
+      errEl.style.display = 'block';
+      return;
+    }
+    localStorage.setItem('morellis_fb_config', JSON.stringify(config));
+    document.getElementById('setup-screen').style.display = 'none';
+    document.getElementById('loading').style.display = 'flex';
+    const err = startFirebase(config);
+    if (err) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('setup-screen').style.display = 'block';
+      errEl.textContent = 'Firebase error: ' + err;
+      errEl.style.display = 'block';
+    }
+  };
+
+  // ── Reset config ─────────────────────────────────────────
+  window.resetConfig = function() {
+    if (!confirm('Clear saved Firebase config and reconnect?')) return;
+    localStorage.removeItem('morellis_fb_config');
+    location.reload();
+  };
+
+  // ── Boot ─────────────────────────────────────────────────
+  const saved = localStorage.getItem('morellis_fb_config');
+  if (saved) {
+    try {
+      const config = JSON.parse(saved);
+      const err = startFirebase(config);
+      if (err) {
+        localStorage.removeItem('morellis_fb_config');
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('setup-screen').style.display = 'block';
+      }
+    } catch(e) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('setup-screen').style.display = 'block';
+    }
+  } else {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('setup-screen').style.display = 'block';
+  }
+</script>
+
+</body>
+</html>
